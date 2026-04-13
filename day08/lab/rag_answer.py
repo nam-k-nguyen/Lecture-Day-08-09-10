@@ -154,27 +154,6 @@ def retrieve_sparse(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any
         chunk["score"] = float(scores[i])
         results.append(chunk)
     return results
-    from rank_bm25 import BM25Okapi
-    import chromadb
-    from index import CHROMA_DB_DIR
-
-    client = chromadb.PersistentClient(path=str(CHROMA_DB_DIR))
-    collection = client.get_collection("rag_lab")
-    all_data = collection.get(include=["documents", "metadatas"])
-    all_docs = all_data["documents"]
-    all_metas = all_data["metadatas"]
-
-    tokenized_corpus = [doc.lower().split() for doc in all_docs]
-    bm25 = BM25Okapi(tokenized_corpus)
-    scores = bm25.get_scores(query.lower().split())
-
-    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
-        :top_k
-    ]
-    return [
-        {"text": all_docs[i], "metadata": all_metas[i], "score": float(scores[i])}
-        for i in top_indices
-    ]
 
 
 # =============================================================================
@@ -324,10 +303,12 @@ def build_grounded_prompt(query: str, context_block: str) -> str:
     - Điều chỉnh tone phù hợp với use case (CS helpdesk, IT support)
     """
     prompt = f"""Answer only from the retrieved context below.
-If the context is insufficient to answer the question, say you do not know and do not make up information.
+If the context is insufficient to answer the question, say you do not know and do not make up information. 
 Cite the source field (in brackets like [1]) when possible.
 Keep your answer short, clear, and factual.
 Respond in the same language as the question.
+If there is conflict between different documents, list all conflicting information and point out the discrepancies.
+Do not infer information that is not explicitly stated in the context.
 
 Question: {query}
 
