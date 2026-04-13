@@ -1,5 +1,5 @@
 # Scorecard: baseline_dense
-Generated: 2026-04-13 15:51
+Generated: 2026-04-13 16:36
 
 ## Summary
 
@@ -17,7 +17,7 @@ Generated: 2026-04-13 15:51
 | q01 | SLA | 5 | 5 | 5 | 5 | All claims in the answer are explicitly supported  |
 | q02 | Refund | 5 | 5 | 5 | 5 | All claims in the answer are explicitly supported  |
 | q03 | Access Control | 5 | 5 | 5 | 5 | All claims in the answer are explicitly supported  |
-| q04 | Refund | 4 | 5 | 5 | 3 | Answer lacks clarity on conditions for digital pro |
+| q04 | Refund | 4 | 5 | 5 | 3 | Answer implies exceptions for digital products but |
 | q05 | IT Helpdesk | 5 | 5 | 5 | 5 | Every claim in the answer is explicitly supported  |
 | q06 | SLA | 5 | 5 | 5 | 5 | All claims in the answer are explicitly supported  |
 | q07 | Access Control | 4 | 5 | 5 | 3 | The answer correctly references the approval proce |

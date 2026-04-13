@@ -154,27 +154,6 @@ def retrieve_sparse(query: str, top_k: int = TOP_K_SEARCH) -> List[Dict[str, Any
         chunk["score"] = float(scores[i])
         results.append(chunk)
     return results
-    from rank_bm25 import BM25Okapi
-    import chromadb
-    from index import CHROMA_DB_DIR
-
-    client = chromadb.PersistentClient(path=str(CHROMA_DB_DIR))
-    collection = client.get_collection("rag_lab")
-    all_data = collection.get(include=["documents", "metadatas"])
-    all_docs = all_data["documents"]
-    all_metas = all_data["metadatas"]
-
-    tokenized_corpus = [doc.lower().split() for doc in all_docs]
-    bm25 = BM25Okapi(tokenized_corpus)
-    scores = bm25.get_scores(query.lower().split())
-
-    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
-        :top_k
-    ]
-    return [
-        {"text": all_docs[i], "metadata": all_metas[i], "score": float(scores[i])}
-        for i in top_indices
-    ]
 
 
 # =============================================================================
