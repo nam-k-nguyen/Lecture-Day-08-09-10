@@ -63,15 +63,14 @@ Nhóm phát triển một hệ thống RAG nội bộ giúp tra cứu và trả 
 ### Variant (Sprint 3)
 | Tham số | Giá trị | Thay đổi so với baseline |
 |---------|---------|------------------------|
-| Strategy | TODO (hybrid / dense) | TODO |
-| Top-k search | TODO | TODO |
-| Top-k select | TODO | TODO |
-| Rerank | TODO (cross-encoder / MMR) | TODO |
-| Query transform | TODO (expansion / HyDE / decomposition) | TODO |
+| Strategy | Hybrid (Dense + Sparse) | Đổi từ Dense sang Hybrid |
+| Top-k search | 10 | Giữ nguyên |
+| Top-k select | 3 | Giữ nguyên |
+| Rerank | Cross-encoder | Thêm bước Rerank |
+| Query transform | Không | Giữ nguyên |
 
 **Lý do chọn variant này:**
-> TODO: Giải thích tại sao chọn biến này để tune.
-> Ví dụ: "Chọn hybrid vì corpus có cả câu tự nhiên (policy) lẫn mã lỗi và tên chuyên ngành (SLA ticket P1, ERR-403)."
+> Chọn Hybrid kết hợp Rerank (Cross-encoder) để cải thiện độ chính xác (relevance) của kết quả truy xuất, đặc biệt đối với các câu hỏi chứa keyword cụ thể, thuật ngữ hoặc tên riêng (như mã lỗi, access level). Dense search giỏi bắt ý nghĩa ngữ cảnh nhưng có thể bỏ lỡ keyword chính xác, nên bù đắp bằng Sparse (BM25). Sau đó, dùng Cross-encoder để rerank các chunk top-10 giúp tinh chọn ra 3 chunk phù hợp nhất đưa vào ngữ cảnh, thay vì chỉ dựa vào similarity score mặc định. Kết quả thực tế cho thấy điểm Relevance trung bình đã cải thiện từ 4.20 (Baseline) lên 4.40 (Variant).
 
 ---
 
@@ -98,7 +97,7 @@ Answer:
 ### LLM Configuration
 | Tham số | Giá trị |
 |---------|---------|
-| Model | TODO (gpt-4o-mini / gemini-1.5-flash) |
+| Model | gpt-4o-mini |
 | Temperature | 0 (để output ổn định cho eval) |
 | Max tokens | 512 |
 
@@ -118,21 +117,52 @@ Answer:
 
 ---
 
-## 6. Diagram (tùy chọn)
+## 6. Sơ đồ Pipeline tổng thể
 
-> TODO: Vẽ sơ đồ pipeline nếu có thời gian. Có thể dùng Mermaid hoặc drawio.
+Sơ đồ thể hiện luồng truy vấn nâng cao sử dụng Hybrid Search (kết hợp Dense và Sparse) tiếp nối bởi Cross-encoder Reranking, định hình theo kiến trúc ưu tú nhất (Variant 1) của hệ thống:
 
 ```mermaid
-graph LR
-    A[User Query] --> B[Query Embedding]
-    B --> C[ChromaDB Vector Search]
-    C --> D[Top-10 Candidates]
-    D --> E{Rerank?}
-    E -->|Yes| F[Cross-Encoder]
-    E -->|No| G[Top-3 Select]
-    F --> G
-    G --> H[Build Context Block]
-    H --> I[Grounded Prompt]
-    I --> J[LLM]
-    J --> K[Answer + Citation]
+graph TD
+    %% User Input
+    Q([User Query]) --> SPLIT{Hybrid Search}
+
+    %% Hybrid Retrieval Flow
+    SPLIT -->|Dense (Ngữ nghĩa)| DE[Query Embedding]
+    SPLIT -->|Sparse (Từ khóa)| SP[BM25 Tokenization]
+    
+    DE --> VDB[(ChromaDB Vector Store)]
+    SP --> BMDB[(BM25 Keyword Index)]
+    
+    VDB --> DS[Dense Candidates]
+    BMDB --> SS[Sparse Candidates]
+    
+    DS --> RRF[Reciprocal Rank Fusion]
+    SS --> RRF
+    
+    RRF --> TOP10[Top-10 Candidates]
+    
+    %% Reranking & Selection Flow
+    TOP10 --> RR{Cross-Encoder Rerank}
+    Q -.-> RR
+    RR -->|Re-score pairs| R[Ranked Candidates]
+    R --> T3[Select Top-3 Chunks]
+    
+    %% Generation Flow
+    T3 --> CB[Build Context Block]
+    CB --> GP[Grounded Prompt]
+    Q -.-> GP
+    
+    GP --> LLM[[LLM: gpt-4o-mini]]
+    LLM --> ANS([Answer + Citations])
+    
+    %% Styling
+    classDef io fill:#f0f4fa,stroke:#0055ff,stroke-width:2px;
+    classDef process fill:#fff,stroke:#333,stroke-width:1px;
+    classDef db fill:#f9f2e7,stroke:#e69000,stroke-width:2px;
+    classDef llm fill:#e6f9ec,stroke:#00ab41,stroke-width:2px;
+
+    class Q,ANS io;
+    class VDB,BMDB db;
+    class LLM llm;
+    class DE,SP,DS,SS,RRF,TOP10,RR,R,T3,CB,GP process;
 ```
