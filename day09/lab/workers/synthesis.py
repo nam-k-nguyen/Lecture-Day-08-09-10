@@ -22,13 +22,14 @@ from datetime import datetime, timezone
 
 WORKER_NAME = "synthesis_worker"
 HITL_THRESHOLD = 0.4
-ABSTAIN_MESSAGE = "Không đủ thông tin trong tài liệu nội bộ để trả lời câu hỏi này."
+ABSTAIN_MESSAGE = "Không đủ thông tin trong tài liệu nội bộ."
+LLM_ERROR_SENTINEL = "__LLM_CALL_FAILED__"
 
-SYSTEM_PROMPT = """Bạn là trợ lý IT Helpdesk nội bộ.
+SYSTEM_PROMPT = f"""Bạn là trợ lý IT Helpdesk nội bộ.
 
 Quy tắc nghiêm ngặt:
 1. CHỈ trả lời dựa vào context được cung cấp. KHÔNG dùng kiến thức ngoài.
-2. Nếu context không đủ để trả lời → trả lời CHÍNH XÁC: "Không đủ thông tin trong tài liệu nội bộ".
+2. Nếu context không đủ để trả lời → trả lời CHÍNH XÁC: "{ABSTAIN_MESSAGE}".
 3. Trích dẫn nguồn bằng số chunk tương ứng ở cuối mỗi câu quan trọng: [1], [2], ... (KHÔNG ghi tên file).
 4. Nếu có Policy Exceptions → nêu rõ ràng TRƯỚC khi kết luận.
 5. Trả lời súc tích, có cấu trúc, tiếng Việt. Không lặp lại câu hỏi.
@@ -69,7 +70,8 @@ def _call_llm(messages: list) -> str:
         except Exception as e:
             print(f"[synthesis] Gemini failed: {e}")
 
-    return "[SYNTHESIS ERROR] Không thể gọi LLM. Kiểm tra API key trong .env."
+    # Trả về sentinel thay vì string-answer → synthesize() sẽ map thành abstain + HITL
+    return LLM_ERROR_SENTINEL
 
 
 def _build_context(chunks: list, policy_result: dict) -> str:
@@ -169,6 +171,17 @@ def synthesize(task: str, chunks: list, policy_result: dict) -> dict:
     ]
 
     answer = _call_llm(messages)
+
+    # LLM call thất bại → map thành abstain + confidence thấp (đảm bảo HITL trigger)
+    if answer == LLM_ERROR_SENTINEL:
+        return {
+            "answer": f"{ABSTAIN_MESSAGE} (LLM call failed — kiểm tra API key)",
+            "sources": [],
+            "confidence": 0.1,
+            "abstained": True,
+            "llm_error": True,
+        }
+
     # Chỉ cite source của chunk thực sự được tham chiếu trong answer
     cited_sources = []
     for i, chunk in enumerate(chunks, 1):
@@ -187,6 +200,7 @@ def synthesize(task: str, chunks: list, policy_result: dict) -> dict:
         "sources": cited_sources,
         "confidence": confidence,
         "abstained": _is_abstain(answer),
+        "llm_error": False,
     }
 
 
@@ -200,6 +214,8 @@ def run(state: dict) -> dict:
     state.setdefault("history", [])
     state.setdefault("worker_io_logs", [])
     state["workers_called"].append(WORKER_NAME)
+    # Reset HITL flag cho turn hiện tại (tránh leak từ worker trước hoặc lần chạy cũ)
+    state["hitl_triggered"] = False
 
     worker_io = {
         "worker": WORKER_NAME,
@@ -220,12 +236,11 @@ def run(state: dict) -> dict:
         state["sources"] = result["sources"]
         state["confidence"] = result["confidence"]
 
-        # HITL trigger khi confidence thấp
-        if result["confidence"] < HITL_THRESHOLD:
+        # HITL trigger khi confidence thấp hoặc LLM lỗi
+        if result["confidence"] < HITL_THRESHOLD or result.get("llm_error"):
             state["hitl_triggered"] = True
-            state["history"].append(
-                f"[{WORKER_NAME}] HITL triggered (confidence={result['confidence']} < {HITL_THRESHOLD})"
-            )
+            reason = "llm_error" if result.get("llm_error") else f"confidence={result['confidence']} < {HITL_THRESHOLD}"
+            state["history"].append(f"[{WORKER_NAME}] HITL triggered ({reason})")
 
         worker_io["output"] = {
             "answer_length": len(result["answer"]),
@@ -243,8 +258,17 @@ def run(state: dict) -> dict:
     except Exception as e:
         worker_io["error"] = {"code": "SYNTHESIS_FAILED", "reason": str(e)}
         state["final_answer"] = f"SYNTHESIS_ERROR: {e}"
+        state["sources"] = []
         state["confidence"] = 0.0
         state["hitl_triggered"] = True
+        worker_io["output"] = {
+            "answer_length": len(state["final_answer"]),
+            "sources": [],
+            "sources_count": 0,
+            "confidence": 0.0,
+            "abstained": False,
+            "hitl_triggered": True,
+        }
         state["history"].append(f"[{WORKER_NAME}] ERROR: {e}")
 
     state["worker_io_logs"].append(worker_io)
