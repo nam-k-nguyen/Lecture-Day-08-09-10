@@ -23,27 +23,58 @@ Hệ thống được thiết kế theo mô hình **Multi-Agent Orchestration**,
 Dưới đây là sơ đồ luồng dữ liệu của hệ thống:
 
 ```mermaid
-graph TD
-    User([User Request]) --> Supervisor{Supervisor Node}
+graph TB
+    %% Node Definitions
+    User([User Request])
     
-    Supervisor -- "SLA/IT FAQ" --> Retrieval[Retrieval Worker]
-    Supervisor -- "Refund/Access" --> Policy[Policy Tool Worker]
-    Supervisor -- "Unknown/High Risk" --> HITL[Human Review Node]
+    subgraph Orchestrator [1. Orchestration Layer]
+        Supervisor{Supervisor Node}
+        HITL[Human Review Node]
+    end
+
+    subgraph Workers [2. Intelligence Workers]
+        Retrieval[Retrieval Worker]
+        Policy[Policy & Tool Worker]
+    end
+
+    subgraph LLM_Service [3. Synthesis Layer]
+        Synthesis[Synthesis Worker]
+    end
+
+    subgraph External [External Infrastructure]
+        Chroma[(ChromaDB)]
+        MCP_Server[MCP Server]
+    end
+
+    %% Flow Connections
+    User --> Supervisor
     
-    HITL --> Retrieval
+    Supervisor -- "SLA/IT FAQ" --> Retrieval
+    Supervisor -- "Refund/Access" --> Policy
+    Supervisor -- "High Risk/Unknown" --> HITL
     
-    Retrieval --> Synthesis[Synthesis Worker]
+    HITL -- "Approved" --> Retrieval
+    
+    Retrieval <--> Chroma
+    
     Policy --> Retrieval
+    Policy <--> MCP_Server
+    
+    Retrieval --> Synthesis
     Policy --> Synthesis
     
     Synthesis --> Output([Final Answer])
+
+    %% Styling
+    style Orchestrator fill:#f9f,stroke:#333,stroke-width:2px
+    style Workers fill:#bbf,stroke:#333,stroke-width:2px
+    style LLM_Service fill:#bfb,stroke:#333,stroke-width:2px
+    style External fill:#eee,stroke:#333,stroke-dasharray: 5 5
     
-    subgraph "MCP Infrastructure"
-        Policy -.-> MCP[MCP Server]
-        MCP -.-> search_kb
-        MCP -.-> get_ticket_info
-        MCP -.-> check_access
-    end
+    style Supervisor fill:#FFD700,stroke:#DAA520,color:#000
+    style Synthesis fill:#90EE90,stroke:#006400,color:#000
+    style HITL fill:#FF6347,stroke:#8B0000,color:#fff
+    style MCP_Server fill:#87CEEB,stroke:#4682B4,color:#000
 ```
 
 ---
