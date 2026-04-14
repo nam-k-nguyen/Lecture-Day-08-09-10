@@ -168,5 +168,3 @@ Nhóm sẽ thực hiện 2 cải tiến dựa trên trace thực tế:
 
 ---
 
-*File này lưu tại: `reports/group_report.md`*  
-*Commit sau 18:00 được phép theo SCORING.md*
